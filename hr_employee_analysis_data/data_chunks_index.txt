@@ -1,0 +1,4 @@
+biblioteki.RData
+import i selekcja.RData
+oczyszczenie.RData
+kategoryczne tabelka.RData

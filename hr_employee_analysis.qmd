@@ -1,0 +1,1205 @@
+---
+title: "Projekt z zakresu analizy danych"
+subtitle: "HR employee analysis"
+author: "Piotr Szyszka"
+pagetitle: HR Employee analysis
+format: 
+  html:
+    lang: pl
+    theme: united
+    self-contained: true
+    author-title: Autor
+    toc: true
+    toc-title: Spis treści
+    toc-location: left
+    warning: false
+    message: false
+    echo: false
+editor_options: 
+  chunk_output_type: console
+server: shiny
+---
+
+```{r biblioteki}
+#| include: false
+#| context: data
+library(tidyverse)
+library(kableExtra)
+library(flextable)
+library(ggcorrplot)
+library(stargazer)
+library(lessR)
+library(rstatix)
+library(igraph)
+library(ggraph)
+library(randomForest)
+library(rsample)
+library(gridExtra)
+library(plotly)
+library(gbm)
+library(shiny)
+library(jtools)
+```
+
+```{r options}
+#| include: false
+options(round = 3)
+```
+
+```{css}
+#quarto-document-content {
+  width: 1300px;
+}
+
+#quarto-margin-sidebar {
+  margin-right: -600px;
+  margin-left: 500px;
+}
+
+body{
+  font-size: 21px;
+}
+
+h1.title {
+  font-size: 38px;
+  color: #754c22;
+  font-style: italic, bold;
+  text-align: center;
+}
+
+h4.author{
+  font-style: italic, bold;
+  text-align: center;
+}
+
+h4.date{
+  font-style: italic, bold;
+  text-align: center;
+}
+
+h1{
+  font-weight: bold;
+  font-style: oblique;
+  color: #524837;
+  font-family: "Times New Roman";
+}
+
+h2{
+  font-weight: bold;
+  font-style: oblique;
+  color: #555731;
+  font-family: "Times New Roman";
+}
+
+h3{
+  font-weight: bold;
+  font-style: oblique;
+  color: #555731;
+  font-family: "Times New Roman";
+}
+
+h4{
+  font-weight: bold;
+  font-style: oblique;
+  color: #555731;
+  font-family: "Times New Roman";
+}
+
+a:link {
+    color: red;
+}
+
+a:visited {
+    color: green;
+}
+
+ a:hover {
+    color: hotpink;
+}
+
+
+
+```
+
+
+# Słowem wstępu
+
+Raport jest wynikiem pracy włożonej w projekt na przedmiot <b><i> Projekt z zakresu analizy danych.
+</i></b>
+
+# Cel
+
+Głównym celem projektu jest przeprowadzenie szeroko rozumianej analizy na badanym zbiorze danych. <br>
+Dzieki niej odkryta zostanie struktura wewnętrznych zależności zbioru wraz z charakterystyką wchodzących cech. <br>
+Dodatkowo dokładnie zostanie zbadany problem występowania wypalenia zawodowego poprzez zbudowanie, ocenę i porównanie modeli służących klasyfikacji.
+
+```{r import i selekcja}
+#| include: false
+#| context: data
+dane <- read.csv("D:\\V_SEM\\projekt_analiza\\projekt_iad\\dane.csv", header = TRUE)
+df <- dane %>% 
+  dplyr::select(-c("EmployeeNumber", "EmployeeCount", "StockOptionLevel", "DailyRate", "EducationField", "HourlyRate", "JobLevel", "JobRole", "Over18", "PerformanceRating", "StandardHours", "YearsInCurrentRole", "YearsSinceLastPromotion", "YearsWithCurrManager"))
+names(df)
+```
+
+# Opis zbioru badawczego
+
+Dane zostały pobrane z [kaggle](https://www.kaggle.com/datasets/whenamancodes/hr-employee-attrition).
+<br>
+Zbiór przedstawia fikcyjne dane dotyczące zatrudnionych pracowników w pewnej firmie.
+<br>
+Cały zbiór danych składa się ze 35 kolumn oraz 1470 wierszy, przy czym część z dostępnych cech uznaliśmy za nieistotne pod kątem przeprowadzanej analizy. Dlatego spośród 35 wybraliśmy 21. 
+Są to:
+
+-   `Age` - wiek pracownika,
+
+-   `Attrition` - zmienna kategoryczna odpowiadająca za wypalenie zawodowe (1 - wystąpiło, 0 - nie wystąpiło),
+
+-   `BusinessTravel` - częstotliwość podróżowania w sprawach biznesowych,
+
+-   `Department` - wydział organizacji,
+
+-   `DistanceFromHome` - odległośc od pracy,
+
+-   `Education` - poziom wykształcenia,
+
+-   `EnvironmentSatisfaction` - zadowolenie z otoczenia pracy,
+
+-   `Gender` - płeć,
+
+-   `JobInvolvement` - zaangażowanie w pracę,
+
+-   `JobSatisfaction` - satysfakcja z pracy,
+
+-   `MaritalStatus` - stan cywilny,
+
+-   `MonthlyIncome` - miesięczny przychód,
+
+-   `MonthlyRate` - stawka miesięczna,
+
+-   `NumCompaniesWorked` - ilość poprzednich firm,
+
+-   `OverTime` - zmienna kategoryczna odpowiadająca za wykonywanie nadgodzin (1 - występiły, 0 - nie wystąpiły),
+
+-   `PercentSalaryHike` - podwyżka w %,
+
+-   `RelationshipSatisfaction` - satysfakcja z relacji prywatnych,
+
+-   `TotalWorkingYears` - ilość przepracowanych lat,
+
+-   `TrainingTimesLastYear` - liczba szkoleń w poprzednim roku,
+
+-   `WorkLifeBalance` - balans między karierą, a życiem prywatnym,
+
+-   `YearsAtCompany` - staż w organizacji (w latach).
+
+```{r oczyszczenie}
+#| include: false
+#| context: data
+str(df)
+#zamiana zmiennych na factor 
+df$Attrition <- as.factor(df$Attrition)
+df$BusinessTravel <- as.factor(df$BusinessTravel)
+df$Department <- as.factor(df$Department)
+df$Gender <- as.factor(df$Gender)
+df$MaritalStatus <- as.factor(df$MaritalStatus)
+df$OverTime <- as.factor(df$OverTime)
+df$Education <- as.factor(df$Education)
+df$EnvironmentSatisfaction <- as.factor(df$EnvironmentSatisfaction)
+df$JobSatisfaction <- as.factor(df$JobSatisfaction)
+df$JobInvolvement <- as.factor(df$JobInvolvement)
+df$RelationshipSatisfaction <- as.factor(df$RelationshipSatisfaction)
+df$WorkLifeBalance <- as.factor(df$WorkLifeBalance)
+
+df$BusinessTravel <- df$BusinessTravel %>% 
+  str_c() %>% 
+  str_replace_all(pattern = c('_' = " ", '-' = " "))
+
+#Sprawdźmy czy mamy jakieś NA
+apply(df, MARGIN = 2, function(x) any(is.na(x)))  # brak NA
+
+```
+
+```{r przedstawienie danych}
+#| tbl-cap: przedstawienie
+
+ft <- sample_n(df, size = 20) %>% 
+  flextable() %>% 
+  theme_zebra()
+
+ft %>% 
+  bold(i = 1, part = "header") %>%
+  bg(i = 1, part = "header", bg = "#93c1db" ) %>% 
+  bold(i = ~Attrition == "Yes") %>% 
+  italic(i = ~Attrition == "No") %>% 
+  autofit() %>% 
+  add_footer_lines(values = "losowe 20. obiektów z naszego zbioru danych")
+```
+
+# Przegląd zmiennych
+
+W tej części przedstawimy strukturę zbioru.
+Omówione zostaną podstawowe statystyki opisowe dla zmiennych numerycznych wraz ze scharakteryzowaniem cech typu jakościowego.
+
+## Zmienne numeryczne {#zmienne-numeryczne}
+
+### Statystyki opisowe
+
+```{r staty opisowe num}
+#| include: false
+num <- df %>% 
+  dplyr::select_if(is.numeric)
+```
+
+::: panel-tabset
+## Dane
+
+```{r}
+num %>% 
+  head(10) %>% 
+  kable(format = "html", table.attr = "style='width:30%;'") %>% 
+  kable_styling()
+```
+
+## Statystyki
+
+```{r}
+
+#| echo: false
+num %>% 
+  apply(2, summary) %>% 
+  rbind(St.dev = apply(., 2, sd))%>%
+  round(2) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "responsive") %>% 
+  column_spec(1, bold = TRUE)
+```
+:::
+
+Z powyższego zestawienia dowiadujemy się, że:
+
+-   pracownicy byli w wieku od 18.
+    do 60.
+    lat;
+
+-   średnia przychodów wynosi nieco ponad 6500;
+
+-   badani średnio przepracowali 11.28 lat.
+
+### Korelacje {#korelacje}
+
+Struktura zależności liniowej przedstawiona zostanie w postaci macierzy korelacji.
+
+
+<center>
+
+```{r macierz korelacji}
+cor <- cor(num)
+ggcorrplot(cor, lab = TRUE, type = "lower", show.legend = T, p.mat = ggcorrplot::cor_pmat(num))
+```
+
+</center>
+
+Z powyższego zestawienia widzimy, że najbardziej skorelowane są zmienne `MonthlyIncome` z `TotalWorkingYears` ($\rho = 0.77$).
+
+Następnie `TotalWorkingYears` z `Age` ($\rho = 0.68$).
+
+Zauważmy jeszcze, że `TotalWorkingYears` koreluje z `YearsAtCompany` na poziomie $\rho = 0.63$.
+
+Pozostałe zmienne nie wykazują silnych korelacji między sobą.
+
+### Rozkłady
+
+Dzieki wizualizacji rozkładów zmiennych możemy wstępnie zorientować się o charakterze zjawiska.
+
+::: panel-tabset
+## Age
+
+```{r Age}
+ num %>% 
+  ggplot(aes(x = Age))+
+  geom_histogram(aes(y = ..density..), fill = "white", colour = 1)+
+  geom_density(lwd = 1.5, linetype = 2, colour = 2)+
+  labs(title = "Rozkład zmiennej Age")
+```
+
+## MonthlyIncome
+
+```{r mi}
+num %>% 
+  ggplot(aes(x = MonthlyIncome))+
+  geom_histogram(aes(y = ..density..), fill = "white", colour = 1)+
+  geom_density(lwd = 1.5, linetype = 2, colour = 2)+
+  labs(title = "Rozkład zmiennej MonthlyIncome")
+```
+
+## MonthlyRate
+
+```{r mr}
+num %>% 
+  ggplot(aes(x = MonthlyRate))+
+  geom_histogram(aes(y = ..density..), fill = "white", colour = 1)+
+  geom_density(lwd = 1.5, linetype = 2, colour = 2)+
+  labs(title = "Rozkład zmiennej MonthlyRate")
+```
+
+## DistanceFromHome
+
+```{r dfh}
+num %>% 
+  ggplot(aes(x = DistanceFromHome))+
+  geom_histogram(aes(y = ..density..), fill = "white", colour = 1)+
+  geom_density(lwd = 1.5, linetype = 2, colour = 2)+
+  labs(title = "Rozkład zmiennej DistanceFromHome")
+
+```
+:::
+
+### Zmienności w zarobkach
+
+Zbadajmy jaka jest struktura zarobków w naszym zbiorze.
+O tym mówią nam dwie zmienne - `MonthlyRate` będąca stawką miesieczną danego pracownika oraz `MonthlyIcome`, czyli przychód (po podatkach).
+
+Zmienność najłatwiej jest ocenić na podstawie wykresu ramka-wąsy.
+
+<center>
+
+```{r boxploty}
+num %>% 
+  dplyr::select(MonthlyIncome, MonthlyRate) %>% 
+  gather() %>% 
+  ggplot(aes(x = key, y = value))+
+  geom_boxplot()+
+  ylim(1000, 29000)+
+  xlab("zmienna")+
+  ylab("wartość")+
+  ggtitle("Porównanie zmienności MonthlyIncome i MonthlyRate")
+```
+
+</center>
+Ten mówi nam, że zmienna `MonthlyRate` cechuje się o wiele większą zmiennością niż `MonthlyIncome`.
+Zakres zmienności dla `MonthlyIncome` to: $<1009; 19999>$.
+Zakres zmienności dla `MonthlyRate` to: $<2094;2699>$.
+
+## Zmienne kategoryczne
+
+W badanym zbiorze mamy kilka zmiennych kategorycznych (typu factor).
+Są to:
+
+```{r}
+#| include: false
+
+df %>% 
+  select(is.factor) %>% 
+  names()
+```
+
+-   `Attrition`,
+
+-   `Department`,
+
+-   `Education`,
+
+-   `EnvironmentSatisfaction`,
+
+-   `Gender`,
+
+-   `JobInvolment`,
+
+-   `JobSatisfaction`,
+
+-   `MaritalStatus`,
+
+-   `OverTime`.
+
+-   `RelationShipSatisfaction`,
+
+-   `WorkLifeBalance`.
+
+```{r kategoryczne tabelka}
+#| include: false
+#| context: data
+kat <- df %>% 
+  dplyr::select_if(is.factor)
+```
+
+### Podział
+
+Zbadajmy w jakich proporcjach występują poszczególne poziomy nasze zmienne kategoryczne.
+
+```{r}
+#| panel: sidebar
+vars <- names(kat)
+
+shiny::helpText("Wybierz typ wykresu oraz zmienną, dla której ma zostać narysowany.")
+selectInput("typ", "Typ wykresu", c("Bar", "Pie"), selected = "Pie")
+selectInput("zmienna", "Zmienna", vars, selected = vars[1])
+
+```
+
+```{r}
+#| panel: fill
+library(plotly)
+library(shiny)
+plotly::plotlyOutput("plot")
+```
+
+```{r}
+#| context: server
+library(shiny)
+library(plotly)
+library(tidyverse)
+
+
+observeEvent(input$typ,{
+  observeEvent(input$zmienna, {
+  typ <- reactive(input$typ)
+  nazwa <- reactive(input$zmienna)
+  
+if(typ() == "Pie"){
+output$plot <- renderPlotly(plot_ly(kat, labels = ~kat[, input$zmienna] , type = 'pie') %>% 
+     layout(title = input$zmienna))
+}else{
+  tmp <- dplyr::count(kat, zmienna = kat[, input$zmienna])
+output$plot<-renderPlotly(plot_ly(tmp, x = ~zmienna, y = ~n, color = ~zmienna,type = 'bar') %>% 
+  layout(title = input$zmienna, xaxis = list(title = '')))
+}
+})
+})
+```
+
+### Niezależność z Attrition {#niezaleznosc}
+
+Zbadanie niezależności cech pozwoli na wskazanie tych czynników, które współwystępują nieprzypadkowo z wypaleniem zawodowym. 
+
+
+```{r}
+p <- NULL
+statystyka <- NULL
+for(i in names(kat)[-1]){
+ test <- chisq.test(kat$Attrition, kat[, i]) 
+  p <- c(p, test$p.value)
+  statystyka <- c(statystyka, round(test$statistic,2))
+}
+chi <- data.frame(p = round(p, 3), statystka = statystyka) 
+rownames(chi) <- names(kat)[-1]
+istotnosc <- ifelse(chi$p > 0.05, yes = "Niezależne", "Nieniezależne")
+chi <- cbind(chi, Wniosek = istotnosc)
+chi %>% 
+  kable() %>% kable_styling(bootstrap_options = c("hover","striped")) %>% 
+  column_spec(column = 1, italic = TRUE) %>% 
+  row_spec(which(chi$Wniosek == "Nieniezależne"), bold = T, color = "green") %>% 
+  row_spec(which(chi$Wniosek == "Niezależne"), bold = T, color = "#9c253d")
+zalezne <- rownames(chi[which(chi$Wniosek == "Nieniezależne"), ])
+```
+
+Z powyższego zestawienia dowiadujemy się, że zmienne które mają istotny związek z wystąpieniem wypalenia zawodowego to *`r zalezne`*.  
+
+
+# Hipotezy
+
+## Średnie dochody w podziale na płeć
+
+Na początku przyjrzyjmy się samemu zjawisku
+
+```{r}
+#| include: false
+mi_g <- df %>% select(Gender, MonthlyIncome)
+
+sumarka <- mi_g %>% 
+  group_split(Gender) %>% 
+  map(~summary(.))
+
+female <- sumarka[[1]]
+male <- sumarka[[2]]
+rbind(female, "")
+
+female[nrow(female), 2] <- sprintf("Sd: %1.0f", sd(df[which(df$Gender == "Female"), "MonthlyIncome"]))
+
+male[nrow(male), 2] <-  sprintf("Sd: %1.0f", sd(df[which(df$Gender == "Male"), "MonthlyIncome"]))
+```
+
+```{r}
+female_html <- female %>% htmlTable::htmlTable(caption = "Female")
+male_html <- male %>% htmlTable::htmlTable(caption = "Male")
+```
+<center>
+
+<table>
+<td> `r female_html` </td>
+<td></td><td></td><td></td><td></td><td></td><td></td>
+<td>`r male_html` </td>
+</table>
+
+</center>
+
+```{r}
+#| include: false
+box <- mi_g %>% 
+  pivot_longer(cols = MonthlyIncome) %>% 
+  ggplot()+
+  geom_boxplot(aes(x = Gender, y = value, color = Gender), show.legend = FALSE)
+
+density <- mi_g %>% 
+  ggplot(aes(x = MonthlyIncome, color = Gender))+
+  geom_density()
+
+
+ggsave(filename = "box.png", plot = box)
+ggsave(filename = "density.png", plot = density)
+```
+
+
+<table>
+
+<tr>
+<td> ![](box.png) </td>
+
+<td> ![](density.png) </td>
+
+</tr>
+
+</table>
+
+
+Przy pomocy testu t-studenta dla prób niezależnych, na poziomie istotności $1-\alpha = 0.95$ zweryfikujemy hipotezę, że *średnia wartość dochodu w podziale na płeć jest równa, wobec hipotezy, że są różne.*
+
+::: callout-note
+## Ważne
+
+Statystyka testowa bazuje na średnich arytmetycznych, a na mocy *Centralnego Twierdzenia Granicznego* wiemy, że ich rozkłady dążą do rozkładu normalnego.
+W konsekwencji, pomimo niezgodnośći z rozkładem normalnym samej cechy, statystyka testowa, wraz z liczebnością próby, również będzie dążyć do rozkładu Gaussa.
+<br> Stąd stosowanie testu t-studenta w tak licznych próbach jest uzasadnione.
+[Źródło](https://thestatsgeek.com/2013/09/28/the-t-test-and-robustness-to-non-normality/)
+:::
+
+$$
+H_0: \mu_0 = \mu_1
+$$
+
+$$
+H_1: \mu_0 \neq \mu_1
+$$
+
+Zakładamy, że wariancje w obu populacjach są równe.
+
+```{r}
+#| include: false
+fem_mi <- df %>% filter(Gender == "Female") %>% select(MonthlyIncome)
+ma_mi <- df %>% filter(Gender == "Male") %>% select(MonthlyIncome) 
+```
+
+```{r}
+#| echo: true
+
+t.test(fem_mi$MonthlyIncome, ma_mi$MonthlyIncome, var.equal = TRUE)
+```
+
+Wniosek - **brak podstaw do odrzucenia hipotezy zerowej (o równości dochodów w podziale na płeć).**
+
+## Przychody w zalezności od wykształcenia
+
+Zastanawiające może być czy istnieje róznica w poziomie zarobków (w kontekście średniej) w zależności od wykształcenia.
+
+Przyjrzyjmy się więc hipotezie
+
+$$
+H_0: \forall_{1 \leq i \leq 5 } \mu_i = \mu
+$$
+gdzie $\mu_i$ oznacza średnią w i-tej grupie wyznaczoną przez dany poziom edukacji. <br>
+
+
+```{r}
+#| echo: false
+edu_mi <- df %>% 
+  select(MonthlyIncome, Education)
+
+podsumowanie <- edu_mi %>% 
+  group_by(Education) %>% 
+  summarize(n = n(),
+            mean = mean(MonthlyIncome),
+            sd = sd(MonthlyIncome),
+            Q1 = quantile(MonthlyIncome, 0.25),
+            Q2 = quantile(MonthlyIncome, 0.5),
+            Q3 = quantile(MonthlyIncome, 0.75)
+            ) %>% t()
+
+colnames(podsumowanie) <- 1:5
+podsumowanie <- podsumowanie[-1, ] %>% as.data.frame()
+
+podsumowanie %>%
+  rownames_to_column(var = " ") %>%
+  flextable() %>%
+  bold(j = 1) %>%
+  bold(i = 1, part = "header") %>% 
+  flextable::set_caption("Statystyki opisowe w MonthlyIncome ~ Education")
+
+edubox <- edu_mi %>% 
+  ggplot(aes(x = Education, y  = MonthlyIncome))+
+  geom_boxplot()
+ggsave(filename = "edubox.png", plot = edubox,width = 1024, height = 1024, units = "px")
+
+mod <- aov(MonthlyIncome ~ Education, data = edu_mi)
+
+png("srednie.png",width = 1024, height = 1024)
+gplots::plotmeans(MonthlyIncome ~ Education, data = edu_mi)
+dev.off()
+```
+
+<center>
+<table>
+<tr>
+<td> ![](edubox.png) </td>
+<td> ![](srednie.png) </td>
+</tr>
+</table>
+</center>
+
+
+
+Sprawdźmy czy założenie o zgodności z rozkładem normalnym w podgrupach jest spełnione.
+
+
+```{r}
+edu_mi %>% 
+  group_by(Education) %>% 
+  summarise(statistic = shapiro.test(MonthlyIncome)$statistic,
+            p.value = shapiro.test(MonthlyIncome)$p.value) %>% 
+  kable() %>% kable_styling()
+
+  
+```
+
+Okazuje się, że cecha w żadnej z podgrup nie ma rozkładu normalnego. <br>
+
+Przyjmując jednak, że są to grupy dużo liczebne, poruszone zostało m.in w pracy Lindmana 1974 i Boxa i Andersena 1955, że test Omnibus ANOVA jest odporny na brak normalności rozkładu.
+
+Zbadajmy czy grupy są jednorodne w sensie wariancji.
+
+<center>
+
+```{r}
+car::leveneTest(mod) # jednorodnosc w grupach
+```
+
+</center>
+
+
+Okazuje się, że tak. Przejdźmy więc do testu ***ANOVA***
+
+<center>
+
+
+```{r}
+summary(mod)
+```
+
+</center>
+
+
+Okazuje się, że efekt rzeczywiście jest istotny. <br>
+
+### Post hoc
+
+#### Test LSD Fisher'a
+
+<center>
+
+
+```{r}
+pairwise.t.test(df$MonthlyIncome, g = df$Education)
+```
+
+</center>
+
+
+#### Test Scheffe
+
+<center>
+
+
+```{r}
+xd <- agricolae::scheffe.test(mod, "Education")
+xd$groups %>% flextable()
+```
+
+</center>
+
+
+Testy *Scheffe* i *LSD* wskazują na istotną różnicę w dochodach między poziomami wykształcenia.
+
+# Algorytmy klasyfikujące 
+
+W tej części prezentacji zbudowane i scharakteryzowane zostaną modele slużące klasyfikacji i predykcji dla zmiennej `Atrition` (wypalenie zawodowe).
+
+## Analiza dyskryminacyjna
+
+Analiza funkcji dyskryminacyjnych pozwoli nam rozstrzygnąć, które ze zmiennych charakteryzują się największą różnicą ze względu na średnią.
+Pozwoli nam to więc znaleźć te czynniki, w sensie których występują największe różnice w obu grupach.
+Poprowadzona zostanie ona na zmiennych [typu numerycznego.](#zmienne-numeryczne)
+
+### Założenia
+
+Analiza dyskryminacyjna zakłada, że:
+
+-   cechy mają w grupach wielowymiarowy rozkład normalny,
+
+-   macierze kowariancji w grupach są homogeniczne,
+
+-   brak współliniowości zmiennych objaśniających,
+
+-   brak wartości odstających.
+
+Okazuje się, że badany zbiór danych ***nie spełnia założenia o wielowymiarowym rozkładzie normalnym*** cech objaśniających `Attrition`.<br> Mając na uwadze fakt, że moc każdego testu rośnie wraz z liczebnością próby oraz sam jej rozmiar (**1470 obserwacji**), usprawiedliwia nam niespełnienie tego założenia.<br> Dodatkowo analiza dyskryminacyjna, dla której większym zagrożeniem jest niejednorodność macierzy kowariancji w grupach, jest odporna na nienormalność.
+
+Co do współliniowości - w naszym zbiorze ***żadna ze zmiennych nie jest współiniowa z inną.*** [Patrz tu](#korelacje)
+
+Macierze kowariancji w obu grupach okazują się nie być jednorodne.
+W celu ich ujednolicenia oraz zbliżenia wielowymiarowego rozkładu do normalnego, zostało zastosowane przekształcenie potęgowe Yeo-Johnson'a, w wyniku czego test *M-Box'a* wykazuje istotność.
+
+Dane po przekształceniu prezentują się następująco:
+
+```{r czary}
+#| include: false
+names(num)
+
+box_m(df[, c(names(num))], df$Attrition) # daleko do jednorodnosci
+
+
+dobre <- df[, c("Attrition", names(num))] %>% 
+  rstatix::mahalanobis_distance() %>% 
+  filter(!is.outlier)
+
+dobre <- df[, c("Attrition", names(num))] %>% 
+   dplyr::left_join(dobre)
+
+dobre <- dobre[, -(11:12)]
+
+mod <- lm(as.matrix(dobre[, -1])~1)
+a <- car::powerTransform(mod, family = "yjPower")
+summary(a)
+
+# przed transformacja i po wywaleniu outliers
+box_m(dobre[, -1], dobre[, 1]) # brak jednorodnsoci
+library(car)
+
+################### nie wywalam tych outliers (po transformacji wychodza inne)
+trans <- df[, c("Attrition", names(num))]%>% 
+  mutate(Age = yjPower(Age, lambda = 0.1), 
+         DistanceFromHome = yjPower(DistanceFromHome, lambda = 0),
+         MonthlyIncome = yjPower(MonthlyIncome, lambda = -1/10),
+         MonthlyRate = yjPower(MonthlyRate, lambda = 0.7),
+         NumCompaniesWorked = yjPower(NumCompaniesWorked, lambda = -0.1),
+         PercentSalaryHike = yjPower(PercentSalaryHike, lambda = -1.5),
+         TotalWorkingYears = yjPower(TotalWorkingYears, lambda = 0.25),
+         TrainingTimesLastYear = yjPower(TrainingTimesLastYear, lambda = 0.6),
+         YearsAtCompany = yjPower(YearsAtCompany, lambda = 0.2))
+
+
+box_m(trans[,-1], trans[, 1])$p.value # przed wywaleniem outliers
+
+dobre_trans <- trans  %>% 
+  rstatix::mahalanobis_distance() %>% 
+  filter(!is.outlier)
+
+dobre_trans <- trans %>% 
+  dplyr::left_join(dobre_trans)
+
+trans <- dobre_trans[, -c(11:12)]
+(p <- box_m(trans[, -1], trans[, 1])$p.value) # po wywaleniu outliers
+# bez roznicy :(()
+```
+
+::: panel-tabset
+
+## Przed
+
+```{r pre trans}
+df[, c("Attrition", names(num))] %>% 
+  head(10) %>% 
+  kable() %>% 
+  kable_styling()
+```
+
+## Po
+
+```{r dane po przekształceniu}
+head(trans, 10)%>% 
+  mutate_if(is.numeric, function(x) round(x, 3))%>% 
+  kable() %>% 
+  kable_styling() %>% 
+  add_footnote(label = sprintf("p-value z testu M-Boxa: %f",round(p, 3))) 
+```
+
+:::
+
+Po usunięciu obserwacji odstających, zdiagnozowanych za pomocą odległości *Mahalanobis'a*, budowa modelu jest uzasadniona.
+
+### Model analizy dyskryminacyjnej
+
+Cały zestaw danych podzielony został na zbiór uczący i testowy w proporcji $\frac{2}{3} : \frac{1}{3}$.
+Prawdopodobieństwa przynależości do grupy są w proporcji 0.7:0.3.
+
+```{r model lda}
+#| include: false
+set.seed(2020)
+ind <- sample(1:1470)
+
+dane.ucz <- trans[ind[1 : (2/3*nrow(df))], ] %>% 
+  mutate_if(is.numeric, scale)
+
+dane.test <- trans[ind[(2/3*nrow(df)+1): nrow(df)], ] %>% 
+  mutate_if(is.numeric, scale)
+
+model <- MASS::lda(Attrition ~., data = dane.ucz, prior = c(0.7, 0.3))
+```
+
+### Wagi funkcji dyskryminacyjnych
+
+Zmienna zależna ma tylko dwa poziomy, wobec tego powstała tylko jedna funkcja dyskryminacyjna `LD1`.
+W celu łatwiejszej interpretacji i ujednolicenia rzędu wielkości, model został zbudowany na danych zestandaryzowanych.
+
+```{r wagi dyskryminacyjne}
+model$scaling %>% 
+  as.data.frame() %>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "striped")) %>% 
+  row_spec(row = which(model$scaling[, 1] == max(model$scaling[, 1])), bold = TRUE) %>% 
+  column_spec(italic = TRUE, column = 1)
+
+```
+
+Największy wkład w `LD1` ma `NumCompaniesWorked`, czyli ilość firm, w których pracował badany.
+
+### Średnie grupowe
+
+Przy pomocy analizy średnich grupowych jesteśmy w stanie wskazać te czynniki, które najbardziej różnicują dwie grupy co do średniej.
+
+```{r}
+srednie <- unlist(model$means) %>% 
+  as.matrix() %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = " ")
+
+ft <- srednie %>% 
+  flextable()%>% 
+  add_body_row(values = list("", "", "")) %>% 
+  flextable::add_body_row(values = list("prior:",model$prior[1], model$prior[2]))
+
+ft %>% 
+  theme_vanilla() %>% 
+  bold(i = 1, part = "body") %>% 
+  italic(j = 1, part = "body") %>% 
+  bg(bg = "#c2e8a7", i = which(abs(srednie$No - srednie$Yes) == max(abs(srednie$No - srednie$Yes))) +2) %>%
+  bold(i = which(abs(srednie$No - srednie$Yes) == max(abs(srednie$No - srednie$Yes))) +2) %>% 
+  bg(bg = "#c9e5f2", i = 1)
+```
+
+### Predykcja
+
+W tej części to co najciekawsze - zbadamy jak celnie nasz model przyporządkowuje obiekty do poszczególnych grup.
+Sprawdźmy jak radzi sobie ze zbiorem testowym.
+
+<center>
+
+```{r predykcja}
+#| results: asis
+pred <- predict(model, newdata = dane.test)
+
+
+tabela <- table(Pred = pred$class, Obs = dane.test$Attrition)
+
+prop <- prop.table(tabela)
+(lda_html <- htmlTable::htmlTable(tabela, caption = "LDA", tfoot = sprintf("celność: %i%%", round(sum(diag(prop)), 2)*100)))
+
+```
+
+</center>
+
+## KNN
+
+KNN Metoda K Najbliższych Sąsiadów to algorytm regresji nieparametrycznej, należy do grupy algorytmów leniwych. Oznacza to, algorytm nie zakłada z góry, iż mamy do czynienia z pewnym rozkładem danych oraz że nie buduje modelu w fazie uczenia, lecz dopiero gdy model zostanie zapytany o wynik predykcji. Użyliśmy go w celu klasyfikacji danego pracownika do grupy, w której znajdują się wypalone zawodowo osoby lub do grupy osób nie charakteryzujących się tą cechą. Klayfikacja jest oparta o znalezienie najbliższej okolicy nowej danej (bazującej na odległości Euklidesowej) i porównanie jej do k-sąsiadów. 
+
+### Model
+
+Model zbudowany został za pomocą funkcji `knn()` z pakietu `class`. Do modelu włączone zostaną wszystkie zmienne numeryczne.
+Aby wybrać odpowiednie *k*, które jest parametrem liczby sąsiadów tej metody, przygotowaliśmy funckję, która wyznaczy najlepsze k względem najtrafniejszej predykcji. 
+
+<center>
+
+
+```{r}
+#| echo: false
+
+nor <- function(x) { (x -min(x))/(max(x)-min(x))   } #normalizacja ale gorzej dziala xd
+
+num <- df %>% 
+  dplyr::select_if(is.numeric)
+dane_lda <- cbind(Atr = df$Attrition, num)
+set.seed(2020)
+ind <- sample(1:1470)
+dane.ucz <- dane_lda[ind[1 : (2/3*nrow(df))], ] %>% mutate_if(is.numeric, scale) 
+dane.test <- dane_lda[ind[(2/3*nrow(df)+1): nrow(df)], ] %>% mutate_if(is.numeric, scale)
+cl_du <- dane.ucz[, 1]
+cl_dt <- dane.test[, 1]
+
+#szukamy najlepszego k
+#i in 1:31 bo sqrt(nrow(df))
+i=1
+k.optm=1
+for (i in 1:31){ 
+    knn.mod <-  class::knn(train=dane.ucz[, -1], test=dane.test[, -1], cl=cl_du, k=i)
+    k.optm[i] <- 100 * sum(cl_dt == knn.mod)/NROW(cl_dt)
+    k=i  
+    #cat(k,'=',k.optm[i],'\n')
+}
+plot(k.optm, type="b", xlab="K- Value",ylab="Accuracy level")
+
+#model z 8 sasiadami
+pr <- class::knn(train = dane.ucz[, -1], test = dane.test[, -1], cl = cl_du, k = 8)
+tab <- table(Pred = pr, Obs = cl_dt)
+
+knn_html <- htmlTable::htmlTable(tab, caption = "KNN",
+                                 tfoot = sprintf("celność: %i%%", round(sum(diag(prop.table(tab)))*100)))
+```
+
+</center>
+
+### Predykcja
+
+<center> `r knn_html` </center>
+
+## Random forest
+
+Random forest to metoda, która polega na tworzeniu wielu drzew decyzyjnych i służy do klasyfikacji lub regresji. Na jego podstawie można także wyznaczyć ranking zmiennych, czyli zbadać, które zmienne mają najlepsze czy najgosze właściwości predykcji.
+
+
+### Model
+
+Model zbudowany został za pomocą funkcji `randomForest()` z pakietu o tej samej nazwie. Liczba stworzonych drzew to 500. 
+
+<center>
+
+
+```{r}
+#| echo: false
+df$Attrition <- as.character(df$Attrition)
+df$Attrition[df$Attrition == "Yes"] <- 1
+df$Attrition[df$Attrition == "No"] <- 0
+df$Attrition <- as.numeric(df$Attrition)
+
+set.seed(2020)
+
+library(rsample)
+df$Attrition <- as.factor(df$Attrition)
+data_split <- initial_split(df, prop = 0.7)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+library(randomForest)
+
+
+rf2 <- randomForest(
+  Attrition ~ .,
+  data=train_data,
+  importance = T,
+  replace = F,
+  sampsize=c(200,100)
+)
+pred = predict(rf2, newdata=test_data[-2])
+cm = table(Pred = pred, Obs = test_data[,2])
+
+rf2
+
+# plot(rf2) #wykres bledow
+# importance(rf2) #waznosc zmiennych w drzewach
+varImpPlot(rf2, type=2, main="Ważność zmiennych") #wykres waznosci zmiennych
+
+
+accuracy <- mean(pred == test_data$Attrition)*100
+rf_html <- htmlTable::htmlTable(cm, caption = "Random Forest", tfoot = sprintf("celność: %i%%", round(accuracy)))
+```
+
+</center>
+
+Wartość błędu klasyfikacji dla klasyfikcaji braku wypalenia wynosi `r rf2$confusion[1,3]`, natomiast zarówno dla klasy wypalenia `r rf2$confusion[2,3]`. Błąd  klasyfikacji  dla  wszystkich  danych  jest  na poziomie 13.31%
+
+### Rysunek drzewka
+
+```{r}
+library(ggraph)
+library(igraph)
+
+
+tree_func <- function(final_model,tree_num) {
+
+  tree <- randomForest::getTree(final_model, 
+                                k = tree_num, 
+                                labelVar = TRUE) %>%
+    tibble::rownames_to_column() %>%
+    # make leaf split points to NA, so the 0s won't get plotted
+    mutate(`split point` = ifelse(is.na(prediction), `split point`, NA))
+
+  graph_frame <- data.frame(from = rep(tree$rowname, 2),
+                            to = c(tree$`left daughter`, tree$`right daughter`))
+
+  graph <- graph_from_data_frame(graph_frame) %>% delete_vertices("0")
+
+  V(graph)$node_label <- gsub("_", " ", as.character(tree$`split var`))
+  V(graph)$leaf_label <- as.character(tree$prediction)
+  V(graph)$split <- as.character(round(tree$`split point`, digits = 2))
+  
+  plot <- ggraph(graph, 'dendrogram') + 
+    theme_bw() +
+    geom_edge_link() +
+    geom_node_point() +
+    geom_node_text(aes(label = node_label), na.rm = TRUE, repel = TRUE) +
+    geom_node_label(aes(label = split), vjust = 2.5, na.rm = TRUE, fill = "white") +
+    geom_node_label(aes(label = leaf_label, fill = leaf_label), na.rm = TRUE, 
+                    repel = TRUE, colour = "white", fontface = "bold", show.legend = FALSE) +
+    theme(panel.grid.minor = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.background = element_blank(),
+          plot.background = element_rect(fill = "white"),
+          panel.border = element_blank(),
+          axis.line = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 18))
+
+  return(plot)
+}
+
+#tree_func(rf2,1)
+#ggsave(tree_func(rf,1),file="test.png",width=12,height=8)
+
+```
+
+![](test.png "Wizualizacja przykładowego drzewa losowego")
+
+### Predykcja
+
+<center>
+`r rf_html`
+</center>
+
+
+
+## GBM
+
+GBM (ang. *Gradient Boosting Machines*) jest wysokowydajnym, wspomaganym gradientem ramowym algorytmem drzewa decyzyjnego, używanym do tworzenia rankingu, klasyfikacji i wielu innych zadań uczenia maszynowego.
+
+Polega na iteracyjnym poprawianiu modelu analizując reszty (błędy klasyfikacyjne)  - każdy nastepny model budowany jest w taki sposób, aby przewidywał lepiej te przypadki, w których model poprzedni nie dawał sobie rady wystarczająco dobrze.
+
+
+### Model
+
+Model zbudowany został za pomocą funkcji `train()` z argumentem *method = "gbm"* z pakietu `caret`, która liczbę drzew (`n.trees`), liczbę podziałów w drzewach (`interaction.depth`) i parametr kurczenia (`shrinkage`) ustala automatycznie, za kryterium przyjmując największą celność przewidywania (`Accuracy`).
+
+
+Do modelu włączone zostaną wszystkie zmienne numeryczne ze zbioru oraz te cechy kategoryczne, które wykazują [związek](#niezaleznosc) z `Attrition`. <br>
+
+<center>
+
+```{r}
+# powrot na yes/no w attrition
+df$Attrition <- ifelse(df$Attrition == 0, "No", "Yes")
+df$Attrition <- as.factor(df$Attrition)
+
+#dane do gbm i regresji logistycznej
+
+data <- df %>% 
+  select(Attrition, c(names(cbind(num)), zalezne))
+
+training <- data[ind[1:((2/3)*nrow(df))], ]
+
+test <- data[ind[((2/3)*nrow(df) + 1):nrow(df)], ]
+
+gbm_mod <- caret::train(Attrition ~., data = training, method = "gbm", verbose = FALSE, metric = "Accuracy")
+
+gbm_mod
+x <- summary(gbm_mod) 
+rownames(x) <- NULL
+
+flextable(x)
+
+pred <- predict(gbm_mod, newdata = test, type = "raw")
+tabela <- table(Pred = pred, Obs = test$Attrition)
+prop <- prop.table(tabela)
+gbm_html <- htmlTable::htmlTable(tabela,tfoot = sprintf("celność: %i%%", round(sum(diag(prop)), 2)*100), caption = "GBM")
+# model daje 25 na tak (wszystkich w zbiorze jest 79)
+```
+
+</center>
+
+### Predykcja
+
+<center> `r gbm_html` </center>
+
+## Regresja logistyczna
+
+Regresja logistyczna (ang. *logistic regression*) jest techniką klasyfikacyjną stosowaną wtedy i tylko wtedy gdy zmienna objaśniana przyjmuje dwa stany (sukces i porażka). 
+Polega ona na modelowaniu warunkowego prawdopodobieństwa sukcesu za pomocą kombinacji liniowej predyktorów **X**, które mogą również pochodzić ze skali jakościowej.
+
+### Model
+
+Jako sukces przyjmujęmy wystąpienie poziomu `Yes` dla zmiennej `Attrition`. 
+
+<center>
+
+```{r, results='asis'}
+logit <- glm(Attrition~., data = training, family = binomial("logit"))
+export_summs(logit)
+```
+
+```{r}
+plot_coefs(logit)
+```
+
+</center>
+
+Z powyższego zestawienia widzimy, że czynniki stymulujące (zwiększające prawdopodobieństwo wystąpienia wypalenia zawodowego) to *`r names(logit$coefficients[which(logit$coefficients > 0)])[-1]`*. <br>
+
+### Predykcja
+
+```{r}
+pred <- predict(logit, newdata = test, type = "response")
+pred.class <- ifelse(pred > 0.5, "Yes", "No")
+tab <- table(Pred = pred.class, Obs = test$Attrition)
+prop <- prop.table(tab)
+logit_html <- htmlTable::htmlTable(tab, tfoot = sprintf("celność: %i%%", round(sum(diag(prop)), 2)*100), caption = "Logit")
+# ten az 40 daje na tak
+```
+
+
+<center> `r logit_html` </center>
+
+## Porównanie
+
+<center>
+
+<table>
+<tr>
+
+<td> `r lda_html`</td>
+<td></td> <td></td><td></td> <td></td> <td></td><td></td> 
+
+<td>`r knn_html` </td>
+<td></td> <td></td><td></td> <td></td> <td></td><td></td> 
+
+<td>`r rf_html`</td>
+<td></td> <td></td><td></td> <td></td> <td></td><td></td> 
+
+<td>`r gbm_html`</td>
+<td></td> <td></td><td></td> <td></td> <td></td><td></td> 
+
+<td>`r logit_html`</td>
+
+</tr>
+</table>
+
+</center>
+
